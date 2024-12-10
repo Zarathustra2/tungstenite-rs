@@ -63,7 +63,7 @@ impl<const CHUNK_SIZE: usize> ReadBuffer<CHUNK_SIZE> {
     /// Cleans ups the part of the vector that has been already read by the cursor.
     fn clean_up(&mut self) {
         let pos = self.storage.position() as usize;
-        self.storage.get_mut().truncate(pos);
+        self.storage.get_mut().advance(pos);
         self.storage.set_position(0);
     }
 }
