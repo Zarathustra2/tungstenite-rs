@@ -6,12 +6,12 @@
 
 use std::io::{Cursor, Read, Result as IoResult};
 
-use bytes::Buf;
+use bytes::{Buf, BytesMut};
 
 /// A FIFO buffer for reading packets from the network.
 #[derive(Debug)]
 pub struct ReadBuffer<const CHUNK_SIZE: usize> {
-    storage: Cursor<Vec<u8>>,
+    storage: Cursor<BytesMut>,
     chunk: Box<[u8; CHUNK_SIZE]>,
 }
 
@@ -23,21 +23,22 @@ impl<const CHUNK_SIZE: usize> ReadBuffer<CHUNK_SIZE> {
 
     /// Create a new empty input buffer with a given `capacity`.
     pub fn with_capacity(capacity: usize) -> Self {
-        Self::from_partially_read(Vec::with_capacity(capacity))
+        Self { storage: Cursor::new(BytesMut::with_capacity(capacity)), chunk: Box::new([0; CHUNK_SIZE]) }
     }
 
     /// Create a input buffer filled with previously read data.
     pub fn from_partially_read(part: Vec<u8>) -> Self {
-        Self { storage: Cursor::new(part), chunk: Box::new([0; CHUNK_SIZE]) }
+        let bytes = BytesMut::from(part.as_slice());
+        Self { storage: Cursor::new(bytes), chunk: Box::new([0; CHUNK_SIZE]) }
     }
 
     /// Get a cursor to the data storage.
-    pub fn as_cursor(&self) -> &Cursor<Vec<u8>> {
+    pub fn as_cursor(&self) -> &Cursor<BytesMut> {
         &self.storage
     }
 
     /// Get a cursor to the mutable data storage.
-    pub fn as_cursor_mut(&mut self) -> &mut Cursor<Vec<u8>> {
+    pub fn as_cursor_mut(&mut self) -> &mut Cursor<BytesMut> {
         &mut self.storage
     }
 
@@ -48,7 +49,7 @@ impl<const CHUNK_SIZE: usize> ReadBuffer<CHUNK_SIZE> {
         self.clean_up();
 
         // Now we can safely return the internal container.
-        self.storage.into_inner()
+        self.storage.into_inner().into()
     }
 
     /// Read next portion of data from the given input stream.
@@ -62,7 +63,7 @@ impl<const CHUNK_SIZE: usize> ReadBuffer<CHUNK_SIZE> {
     /// Cleans ups the part of the vector that has been already read by the cursor.
     fn clean_up(&mut self) {
         let pos = self.storage.position() as usize;
-        self.storage.get_mut().drain(0..pos).count();
+        self.storage.get_mut().truncate(pos);
         self.storage.set_position(0);
     }
 }
@@ -111,12 +112,12 @@ mod tests {
 
         buf.advance(2);
         assert_eq!(buf.chunk(), b"ll");
-        assert_eq!(buf.storage.get_mut(), b"Hell");
+        assert_eq!(buf.storage.get_mut().as_ref(), b"Hell");
 
         let size = buf.read_from(&mut inp).unwrap();
         assert_eq!(size, 4);
         assert_eq!(buf.chunk(), b"llo Wo");
-        assert_eq!(buf.storage.get_mut(), b"llo Wo");
+        assert_eq!(buf.storage.get_mut().as_ref(), b"llo Wo");
 
         let size = buf.read_from(&mut inp).unwrap();
         assert_eq!(size, 4);
